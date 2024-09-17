@@ -82,9 +82,11 @@ class Auction(ARC4Contract):
         self.previous_bidder = pay.sender
 
         # Update claimable amount
-        self.claimable_amount[Txn.sender] = pay.amount # will fail if Txn.sender is not opted into the app yet
-        
-        return self.previous_bid # Return the new highest bid amount
+        self.claimable_amount[Txn.sender] = (
+            pay.amount
+        )  # will fail if Txn.sender is not opted into the app yet
+
+        return self.previous_bid  # Return the new highest bid amount
 
     @arc4.abimethod
     def claim_bids(self) -> UInt64:
@@ -106,8 +108,10 @@ class Auction(ARC4Contract):
     @arc4.abimethod
     def claim_asset(self, asset: Asset) -> None:
         assert Global.latest_timestamp > self.auction_end, "auction has not ended"
-        assert Txn.sender == self.previous_bidder, "only previous bidder can claim asset"
-        
+        assert (
+            Txn.sender == self.previous_bidder
+        ), "only previous bidder can claim asset"
+
         # Send ASA to previous bidder
         itxn.AssetTransfer(
             xfer_asset=asset,
@@ -116,10 +120,10 @@ class Auction(ARC4Contract):
             asset_amount=self.asa_amount,
         ).submit()
 
-    @arc4.abimethod(allow_actions=['DeleteApplication'])
+    @arc4.abimethod(allow_actions=["DeleteApplication"])
     def delete_application(self) -> None:
         assert Txn.sender == Global.creator_address, "Only creator can delete app"
-        
+
         itxn.Payment(
             receiver=Global.creator_address,
             close_remainder_to=Global.creator_address,
