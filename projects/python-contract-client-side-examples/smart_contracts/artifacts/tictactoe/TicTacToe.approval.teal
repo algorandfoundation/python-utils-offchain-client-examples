@@ -1,0 +1,763 @@
+#pragma version 10
+
+smart_contracts.tictactoe.contract.TicTacToe.approval_program:
+    txn ApplicationID
+    bnz main_entrypoint@2
+    callsub __init__
+
+main_entrypoint@2:
+    txn NumAppArgs
+    bz main_bare_routing@10
+    method "new_game(pay)uint64"
+    method "delete_game(uint64)void"
+    method "join(uint64)void"
+    method "move(uint64,uint64,uint64)void"
+    txna ApplicationArgs 0
+    match main_new_game_route@4 main_delete_game_route@5 main_join_route@6 main_move_route@7
+    err // reject transaction
+
+main_new_game_route@4:
+    int 1
+    txn OnCompletion
+    shl
+    int 3
+    &
+    assert // OnCompletion is one of NoOp, OptIn
+    txn ApplicationID
+    assert // is not creating
+    txn GroupIndex
+    int 1
+    -
+    dup
+    gtxns TypeEnum
+    int pay
+    ==
+    assert // transaction type is pay
+    callsub new_game
+    itob
+    byte 0x151f7c75
+    swap
+    concat
+    log
+    int 1
+    return
+
+main_delete_game_route@5:
+    txn OnCompletion
+    !
+    assert // OnCompletion is NoOp
+    txn ApplicationID
+    assert // is not creating
+    txna ApplicationArgs 1
+    btoi
+    callsub delete_game
+    int 1
+    return
+
+main_join_route@6:
+    int 1
+    txn OnCompletion
+    shl
+    int 3
+    &
+    assert // OnCompletion is one of NoOp, OptIn
+    txn ApplicationID
+    assert // is not creating
+    txna ApplicationArgs 1
+    btoi
+    callsub join
+    int 1
+    return
+
+main_move_route@7:
+    txn OnCompletion
+    !
+    assert // OnCompletion is NoOp
+    txn ApplicationID
+    assert // is not creating
+    txna ApplicationArgs 1
+    btoi
+    txna ApplicationArgs 2
+    btoi
+    txna ApplicationArgs 3
+    btoi
+    callsub move
+    int 1
+    return
+
+main_bare_routing@10:
+    txn OnCompletion
+    switch main_create@11 main_reject_bare_on_completion@13 main_close_out@12
+    err // reject transaction
+
+main_create@11:
+    txn ApplicationID
+    !
+    assert // is creating
+    int 1
+    return
+
+main_close_out@12:
+    txn ApplicationID
+    assert // is not creating
+    int 1
+    return
+
+main_reject_bare_on_completion@13:
+    err // reject transaction
+
+
+// smart_contracts.tictactoe.contract.TicTacToe.new_game(mbr: uint64) -> uint64:
+new_game:
+    proto 1 1
+    txn OnCompletion
+    int OptIn
+    ==
+    bz new_game_after_if_else@2
+    callsub opt_in
+
+new_game_after_if_else@2:
+    int 0
+    byte "id_counter"
+    app_global_get_ex
+    assert // check self.id_counter exists
+    int 1
+    +
+    byte "id_counter"
+    swap
+    app_global_put
+    frame_dig -1
+    gtxns Receiver
+    global CurrentApplicationAddress
+    ==
+    assert
+    global CurrentApplicationAddress
+    acct_params_get AcctMinBalance
+    assert
+    int 9
+    bzero
+    txn Sender
+    global ZeroAddress
+    cover 2
+    concat
+    swap
+    concat
+    byte 0x00
+    concat
+    byte 0x00
+    concat
+    int 0
+    byte "id_counter"
+    app_global_get_ex
+    assert // check self.id_counter exists
+    itob
+    byte "games"
+    swap
+    concat
+    swap
+    box_put
+    global CurrentApplicationAddress
+    acct_params_get AcctMinBalance
+    assert
+    frame_dig -1
+    gtxns Amount
+    swap
+    uncover 2
+    -
+    ==
+    assert
+    int 0
+    byte "id_counter"
+    app_global_get_ex
+    assert // check self.id_counter exists
+    retsub
+
+
+// smart_contracts.tictactoe.contract.TicTacToe.opt_in() -> void:
+opt_in:
+    proto 0 0
+    txn Sender
+    byte "games_played"
+    int 0
+    app_local_put
+    txn Sender
+    byte "games_won"
+    int 0
+    app_local_put
+    retsub
+
+
+// smart_contracts.tictactoe.contract.TicTacToe.delete_game(game_id: uint64) -> void:
+delete_game:
+    proto 1 0
+    frame_dig -1
+    itob
+    byte "games"
+    swap
+    concat
+    dup
+    box_get
+    swap
+    dup
+    uncover 2
+    assert // check self.games entry exists
+    extract 41 32 // on error: Index access is out of bounds
+    global ZeroAddress
+    ==
+    bnz delete_game_bool_true@2
+    frame_dig 1
+    int 584
+    getbit
+    byte 0x00
+    int 0
+    uncover 2
+    setbit
+    int 0
+    getbit
+    bz delete_game_bool_false@3
+
+delete_game_bool_true@2:
+    int 1
+    b delete_game_bool_merge@4
+
+delete_game_bool_false@3:
+    int 0
+
+delete_game_bool_merge@4:
+    assert
+    txn Sender
+    frame_dig 0
+    dup
+    cover 2
+    box_get
+    assert // check self.games entry exists
+    extract 9 32 // on error: Index access is out of bounds
+    ==
+    assert
+    global CurrentApplicationAddress
+    acct_params_get AcctMinBalance
+    assert
+    swap
+    box_del
+    pop
+    global CurrentApplicationAddress
+    acct_params_get AcctMinBalance
+    assert
+    itxn_begin
+    frame_dig 1
+    extract 9 32 // on error: Index access is out of bounds
+    cover 2
+    -
+    itxn_field Amount
+    itxn_field Receiver
+    int pay
+    itxn_field TypeEnum
+    int 0
+    itxn_field Fee
+    itxn_submit
+    retsub
+
+
+// smart_contracts.tictactoe.contract.TicTacToe.join(game_id: uint64) -> void:
+join:
+    proto 1 0
+    txn OnCompletion
+    int OptIn
+    ==
+    bz join_after_if_else@2
+    callsub opt_in
+
+join_after_if_else@2:
+    frame_dig -1
+    itob
+    byte "games"
+    swap
+    concat
+    dup
+    box_get
+    assert // check self.games entry exists
+    extract 9 32 // on error: Index access is out of bounds
+    txn Sender
+    !=
+    assert
+    dup
+    box_get
+    assert // check self.games entry exists
+    extract 41 32 // on error: Index access is out of bounds
+    global ZeroAddress
+    ==
+    assert
+    dup
+    box_get
+    assert // check self.games entry exists
+    txn Sender
+    replace2 41
+    box_put
+    retsub
+
+
+// smart_contracts.tictactoe.contract.TicTacToe.move(game_id: uint64, x: uint64, y: uint64) -> void:
+move:
+    proto 3 0
+    int 0
+    byte ""
+    dup
+    frame_dig -3
+    itob
+    byte "games"
+    swap
+    concat
+    dup
+    box_get
+    swap
+    dup
+    uncover 2
+    assert // check self.games entry exists
+    dup
+    int 584
+    getbit
+    byte 0x00
+    int 0
+    uncover 2
+    setbit
+    int 0
+    getbit
+    !
+    assert
+    frame_dig -2
+    frame_dig -1
+    callsub coord_to_matrix_index
+    dig 1
+    extract 0 9 // on error: Index access is out of bounds
+    swap
+    int 1
+    extract3 // on error: Index access is out of bounds
+    byte 0x00
+    b==
+    assert
+    txn Sender
+    swap
+    extract 9 32 // on error: Index access is out of bounds
+    dup
+    cover 2
+    ==
+    bnz move_bool_true@2
+    txn Sender
+    frame_dig 4
+    extract 41 32 // on error: Index access is out of bounds
+    ==
+    bz move_bool_false@3
+
+move_bool_true@2:
+    int 1
+    b move_bool_merge@4
+
+move_bool_false@3:
+    int 0
+
+move_bool_merge@4:
+    assert
+    txn Sender
+    frame_dig 5
+    ==
+    dup
+    frame_bury 2
+    bz move_else_body@6
+    frame_dig 4
+    extract 74 1 // on error: Index access is out of bounds
+    btoi
+    int 2
+    %
+    !
+    assert
+    frame_dig 3
+    dup
+    box_get
+    assert // check self.games entry exists
+    extract 0 9 // on error: Index access is out of bounds
+    frame_dig -2
+    frame_dig -1
+    callsub coord_to_matrix_index
+    dup
+    int 9
+    <
+    assert // Index access is out of bounds
+    byte 0x01
+    replace3
+    dig 1
+    box_get
+    assert // check self.games entry exists
+    swap
+    replace2 0
+    box_put
+    b move_after_if_else@7
+
+move_else_body@6:
+    frame_dig 4
+    extract 74 1 // on error: Index access is out of bounds
+    btoi
+    int 2
+    %
+    int 1
+    ==
+    assert
+    frame_dig 3
+    dup
+    box_get
+    assert // check self.games entry exists
+    extract 0 9 // on error: Index access is out of bounds
+    frame_dig -2
+    frame_dig -1
+    callsub coord_to_matrix_index
+    dup
+    int 9
+    <
+    assert // Index access is out of bounds
+    byte 0x02
+    replace3
+    dig 1
+    box_get
+    assert // check self.games entry exists
+    swap
+    replace2 0
+    box_put
+
+move_after_if_else@7:
+    frame_dig 3
+    dup
+    box_get
+    assert // check self.games entry exists
+    extract 74 1 // on error: Index access is out of bounds
+    btoi
+    int 1
+    +
+    itob
+    dig 1
+    box_get
+    assert // check self.games entry exists
+    swap
+    extract 7 1
+    replace2 74
+    dig 1
+    swap
+    box_put
+    box_get
+    assert // check self.games entry exists
+    extract 0 9 // on error: Index access is out of bounds
+    callsub is_game_over
+    pop
+    frame_bury 1
+    bz move_after_if_else@14
+    frame_dig 3
+    dup
+    box_get
+    assert // check self.games entry exists
+    int 584
+    int 1
+    setbit
+    box_put
+    frame_dig 5
+    dup
+    int 0
+    byte "games_played"
+    app_local_get_ex
+    assert // check self.games_played exists for account
+    int 1
+    +
+    byte "games_played"
+    swap
+    app_local_put
+    frame_dig 4
+    extract 41 32 // on error: Index access is out of bounds
+    dup
+    frame_bury 0
+    dup
+    int 0
+    byte "games_played"
+    app_local_get_ex
+    assert // check self.games_played exists for account
+    int 1
+    +
+    byte "games_played"
+    swap
+    app_local_put
+    frame_dig 1
+    bnz move_after_if_else@14
+    frame_dig 2
+    bz move_ternary_false@11
+    frame_dig 5
+    b move_ternary_merge@12
+
+move_ternary_false@11:
+    frame_dig 0
+
+move_ternary_merge@12:
+    dup
+    int 0
+    byte "games_won"
+    app_local_get_ex
+    assert // check self.games_won exists for account
+    int 1
+    +
+    byte "games_won"
+    swap
+    app_local_put
+
+move_after_if_else@14:
+    retsub
+
+
+// smart_contracts.tictactoe.contract.TicTacToe.coord_to_matrix_index(x: uint64, y: uint64) -> uint64:
+coord_to_matrix_index:
+    proto 2 1
+    int 3
+    frame_dig -1
+    *
+    frame_dig -2
+    +
+    retsub
+
+
+// smart_contracts.tictactoe.contract.TicTacToe.is_game_over(board: bytes) -> uint64, uint64, bytes:
+is_game_over:
+    proto 1 3
+    int 0
+    dupn 14
+    byte ""
+    int 0
+
+is_game_over_for_header@1:
+    frame_dig 16
+    int 3
+    <
+    bz is_game_over_after_for@12
+    int 3
+    frame_dig 16
+    *
+    dup
+    frame_bury 15
+    frame_dig -1
+    dig 1
+    int 1
+    extract3 // on error: Index access is out of bounds
+    swap
+    int 1
+    +
+    frame_dig -1
+    swap
+    int 1
+    extract3 // on error: Index access is out of bounds
+    dup
+    frame_bury 0
+    b==
+    bz is_game_over_after_if_else@6
+    frame_dig 15
+    int 2
+    +
+    frame_dig -1
+    swap
+    int 1
+    extract3 // on error: Index access is out of bounds
+    dup
+    frame_bury 1
+    frame_dig 0
+    b==
+    bz is_game_over_after_if_else@6
+    frame_dig 1
+    byte 0x00
+    b!=
+    bz is_game_over_after_if_else@6
+    int 1
+    int 0
+    frame_dig -1
+    frame_bury 2
+    frame_bury 1
+    frame_bury 0
+    retsub
+
+is_game_over_after_if_else@6:
+    frame_dig -1
+    frame_dig 16
+    dup
+    cover 2
+    int 1
+    extract3 // on error: Index access is out of bounds
+    swap
+    int 3
+    +
+    frame_dig -1
+    swap
+    int 1
+    extract3 // on error: Index access is out of bounds
+    dup
+    frame_bury 7
+    b==
+    bz is_game_over_after_if_else@10
+    frame_dig 16
+    int 6
+    +
+    frame_dig -1
+    swap
+    int 1
+    extract3 // on error: Index access is out of bounds
+    dup
+    frame_bury 8
+    frame_dig 7
+    b==
+    bz is_game_over_after_if_else@10
+    frame_dig 8
+    byte 0x00
+    b!=
+    bz is_game_over_after_if_else@10
+    int 1
+    int 0
+    frame_dig -1
+    frame_bury 2
+    frame_bury 1
+    frame_bury 0
+    retsub
+
+is_game_over_after_if_else@10:
+    frame_dig 16
+    int 1
+    +
+    frame_bury 16
+    b is_game_over_for_header@1
+
+is_game_over_after_for@12:
+    frame_dig -1
+    extract 0 1 // on error: Index access is out of bounds
+    dup
+    frame_bury 13
+    frame_dig -1
+    extract 4 1 // on error: Index access is out of bounds
+    dup
+    frame_bury 9
+    b==
+    bz is_game_over_after_if_else@16
+    frame_dig -1
+    extract 8 1 // on error: Index access is out of bounds
+    dup
+    frame_bury 10
+    frame_dig 9
+    b==
+    bz is_game_over_after_if_else@16
+    frame_dig 10
+    byte 0x00
+    b!=
+    bz is_game_over_after_if_else@16
+    int 1
+    int 0
+    frame_dig -1
+    frame_bury 2
+    frame_bury 1
+    frame_bury 0
+    retsub
+
+is_game_over_after_if_else@16:
+    frame_dig -1
+    extract 2 1 // on error: Index access is out of bounds
+    dup
+    frame_bury 14
+    frame_dig 9
+    b==
+    bz is_game_over_after_if_else@20
+    frame_dig -1
+    extract 6 1 // on error: Index access is out of bounds
+    dup
+    frame_bury 11
+    frame_dig 9
+    b==
+    bz is_game_over_after_if_else@20
+    frame_dig 11
+    byte 0x00
+    b!=
+    bz is_game_over_after_if_else@20
+    int 1
+    int 0
+    frame_dig -1
+    frame_bury 2
+    frame_bury 1
+    frame_bury 0
+    retsub
+
+is_game_over_after_if_else@20:
+    frame_dig -1
+    extract 1 1 // on error: Index access is out of bounds
+    dup
+    frame_bury 12
+    frame_dig 13
+    b==
+    bz is_game_over_after_if_else@30
+    frame_dig 12
+    frame_dig 14
+    b==
+    bz is_game_over_after_if_else@30
+    frame_dig -1
+    extract 3 1 // on error: Index access is out of bounds
+    dup
+    frame_bury 2
+    frame_dig 14
+    b==
+    bz is_game_over_after_if_else@30
+    frame_dig 2
+    frame_dig 9
+    b==
+    bz is_game_over_after_if_else@30
+    frame_dig -1
+    extract 5 1 // on error: Index access is out of bounds
+    dup
+    frame_bury 3
+    frame_dig 9
+    b==
+    bz is_game_over_after_if_else@30
+    frame_dig -1
+    extract 6 1 // on error: Index access is out of bounds
+    dup
+    frame_bury 4
+    frame_dig 3
+    b==
+    bz is_game_over_after_if_else@30
+    frame_dig -1
+    extract 7 1 // on error: Index access is out of bounds
+    dup
+    frame_bury 5
+    frame_dig 4
+    b==
+    bz is_game_over_after_if_else@30
+    frame_dig -1
+    extract 8 1 // on error: Index access is out of bounds
+    dup
+    frame_bury 6
+    frame_dig 5
+    b==
+    bz is_game_over_after_if_else@30
+    frame_dig 6
+    byte 0x00
+    b!=
+    bz is_game_over_after_if_else@30
+    int 1
+    dup
+    frame_dig -1
+    frame_bury 2
+    frame_bury 1
+    frame_bury 0
+    retsub
+
+is_game_over_after_if_else@30:
+    int 0
+    dup
+    frame_dig -1
+    frame_bury 2
+    frame_bury 1
+    frame_bury 0
+    retsub
+
+
+// smart_contracts.tictactoe.contract.TicTacToe.__init__() -> void:
+__init__:
+    proto 0 0
+    byte "id_counter"
+    int 0
+    app_global_put
+    retsub
