@@ -1,5 +1,3 @@
-# type: ignore
-
 import logging
 
 import algokit_utils
@@ -16,20 +14,16 @@ def deploy(
     app_spec: algokit_utils.ApplicationSpecification,
     deployer: algokit_utils.Account,
 ) -> None:
-    from smart_contracts.artifacts.auction.auction_client import (
-        AuctionClient,
+    from smart_contracts.artifacts.tictactoe.tic_tac_toe_client import (
+        TicTacToeClient,
     )
 
-    # Reset timestamp offset
-    algod_client.set_timestamp_offset(0)
-    print(f"Current timestamp offset: {algod_client.get_timestamp_offset()}\n")
-
-    app_client = AuctionClient(
+    app_client = TicTacToeClient(
         algod_client,
         creator=deployer,
         indexer_client=indexer_client,
     )
-
-    app_client.app_client.create()
-    print(f"app id {app_client.app_id}")
-    print(f"app address {app_client.app_address}\n")
+    app_client.deploy(
+        on_schema_break=algokit_utils.OnSchemaBreak.AppendApp,
+        on_update=algokit_utils.OnUpdate.AppendApp,
+    )
