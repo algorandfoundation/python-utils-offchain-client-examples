@@ -112,7 +112,6 @@ def game_id(
 
 def test_join(
     tictactoe_client: TicTacToeClient,
-    algorand_client: AlgorandClient,
     guest: AddressAndSigner,
     game_id: int,
 ):
