@@ -8,7 +8,7 @@ from algokit_utils import (
     ensure_funded,
     get_localnet_default_account,
 )
-from algokit_utils.beta.account_manager import AddressAndSigner
+from algokit_utils.beta.account_manager import SigningAccount
 from algokit_utils.beta.algorand_client import AlgorandClient
 from algokit_utils.beta.client_manager import AlgoSdkClients
 from algokit_utils.beta.composer import PayParams
@@ -52,7 +52,7 @@ def tictactoe_client(algorand_client: AlgorandClient) -> TicTacToeClient:
 
 
 @pytest.fixture(scope="session")
-def host(algorand_client: AlgorandClient) -> AddressAndSigner:
+def host(algorand_client: AlgorandClient) -> SigningAccount:
     """Get a host account to use throughout the tests"""
     acct = algorand_client.account.random()
     ensure_funded(
@@ -67,7 +67,7 @@ def host(algorand_client: AlgorandClient) -> AddressAndSigner:
 
 
 @pytest.fixture(scope="session")
-def guest(algorand_client: AlgorandClient) -> AddressAndSigner:
+def guest(algorand_client: AlgorandClient) -> SigningAccount:
     """Get a host account to use throughout the tests"""
     acct = algorand_client.account.random()
     ensure_funded(
@@ -85,7 +85,7 @@ def guest(algorand_client: AlgorandClient) -> AddressAndSigner:
 def game_id(
     tictactoe_client: TicTacToeClient,
     algorand_client: AlgorandClient,
-    host: AddressAndSigner,
+    host: SigningAccount,
 ) -> int:
     last_game_id = tictactoe_client.get_global_state().id_counter
 
@@ -112,7 +112,7 @@ def game_id(
 
 def test_join(
     tictactoe_client: TicTacToeClient,
-    guest: AddressAndSigner,
+    guest: SigningAccount,
     game_id: int,
 ):
     tictactoe_client.opt_in_join(
@@ -128,8 +128,8 @@ def test_join(
 def test_moves(
     tictactoe_client: TicTacToeClient,
     algorand_client: AlgorandClient,
-    host: AddressAndSigner,
-    guest: AddressAndSigner,
+    host: SigningAccount,
+    guest: SigningAccount,
     game_id: int,
 ):
     moves = [

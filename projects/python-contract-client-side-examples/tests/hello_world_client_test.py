@@ -1,9 +1,6 @@
-import algokit_utils
 import pytest
 from algokit_utils import *
 from algokit_utils.config import config
-from algosdk.v2client.algod import AlgodClient
-from algosdk.v2client.indexer import IndexerClient
 
 from smart_contracts.artifacts.hello_world.hello_world_client import (
     HelloWorldFactory,
@@ -48,7 +45,7 @@ def hello_world_client() -> HelloWorldClient:
 
 def test_says_hello(hello_world_client: HelloWorldClient) -> None:
     result = hello_world_client.send.hello(args=("World",))
-
+    print("result", result.returns)
     assert result.abi_return == "Hello, World"
 
 

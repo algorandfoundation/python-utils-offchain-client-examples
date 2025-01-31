@@ -7,7 +7,7 @@ from algokit_utils import (
     ensure_funded,
     get_localnet_default_account,
 )
-from algokit_utils.beta.account_manager import AddressAndSigner
+from algokit_utils.beta.account_manager import SigningAccount
 from algokit_utils.beta.algorand_client import AlgorandClient
 from algokit_utils.beta.client_manager import AlgoSdkClients
 from algokit_utils.beta.composer import PayParams
@@ -49,8 +49,8 @@ def voting_client(algorand_client: AlgorandClient) -> VotingClient:
 
 
 @pytest.fixture(scope="session")
-def voter_factory(algorand_client: AlgorandClient) -> Callable[[], AddressAndSigner]:
-    def create_voter() -> AddressAndSigner:
+def voter_factory(algorand_client: AlgorandClient) -> Callable[[], SigningAccount]:
+    def create_voter() -> SigningAccount:
         acct = algorand_client.account.random()
         ensure_funded(
             algorand_client.client.algod,
@@ -74,7 +74,7 @@ def test_set_topic(voting_client: VotingClient) -> None:
 def test_voting(
     algorand_client: AlgorandClient,
     voting_client: VotingClient,
-    voter_factory: Callable[[], AddressAndSigner],
+    voter_factory: Callable[[], SigningAccount],
 ) -> None:
     for _ in range(3):
         voter = voter_factory()

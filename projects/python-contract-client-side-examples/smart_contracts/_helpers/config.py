@@ -3,7 +3,11 @@ import importlib
 from collections.abc import Callable
 from pathlib import Path
 
-from algokit_utils import Account, ApplicationSpecification
+from algokit_utils import (
+    ApplicationSpecification,
+    SigningAccount,
+    Arc32Contract,
+)
 from algosdk.v2client.algod import AlgodClient
 from algosdk.v2client.indexer import IndexerClient
 
@@ -12,10 +16,7 @@ from algosdk.v2client.indexer import IndexerClient
 class SmartContract:
     path: Path
     name: str
-    deploy: (
-        Callable[[AlgodClient, IndexerClient, ApplicationSpecification, Account], None]
-        | None
-    ) = None
+    deploy: Callable[[Arc32Contract, SigningAccount], None] | None = None
 
 
 def import_contract(folder: Path) -> Path:
@@ -29,10 +30,7 @@ def import_contract(folder: Path) -> Path:
 
 def import_deploy_if_exists(
     folder: Path,
-) -> (
-    Callable[[AlgodClient, IndexerClient, ApplicationSpecification, Account], None]
-    | None
-):
+) -> Callable[[Arc32Contract, SigningAccount], None] | None:
     """Imports the deploy function from a folder if it exists."""
     try:
         deploy_module = importlib.import_module(

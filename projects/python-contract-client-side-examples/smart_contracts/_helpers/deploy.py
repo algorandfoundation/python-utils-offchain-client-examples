@@ -22,15 +22,14 @@ def deploy(
     # get clients
     # by default client configuration is loaded from environment variables
     algorand = AlgorandClient.from_environment()
-    algod_client = algorand.client.get_algod_client()
-    indexer_client = algorand.client.get_indexer_client()
 
     # get app spec
     app_spec = ApplicationSpecification.from_json(app_spec_path.read_text())
 
     # get deployer account by name
-    deployer = get_account(
-        algorand.client.get_algod_client(), "DEPLOYER", fund_with_algos=0
+
+    deployer = algorand.account.from_environment(
+        name="DEPLOYER", fund_with=AlgoAmount(amount={"algos": 0})
     )
 
     minimum_funds_micro_algos = algos_to_microalgos(deployer_initial_funds)

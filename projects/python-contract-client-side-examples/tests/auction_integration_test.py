@@ -1,82 +1,74 @@
+from typing import NamedTuple
 import pytest
-from algokit_utils import TransactionParameters
-from algokit_utils.beta.account_manager import AddressAndSigner
-from algokit_utils.beta.algorand_client import (
-    AlgorandClient,
-    AssetCreateParams,
-    AssetOptInParams,
-    AssetTransferParams,
-    PayParams,
-)
+from algokit_utils import *
 from algokit_utils.config import config
-from algosdk.atomic_transaction_composer import TransactionWithSigner
-from algosdk.v2client.algod import AlgodClient
 
-from smart_contracts.artifacts.auction.auction_client import AuctionClient
+from smart_contracts.artifacts.auction.auction_client import (
+    AuctionClient,
+    AuctionFactory,
+    CommonAppCallParams,
+)
+
+
+class LocalTestAccounts(NamedTuple):
+    creator: SigningAccount
+    alice: SigningAccount
+    bob: SigningAccount
+
+
+class AuctionClients(NamedTuple):
+    creator: AuctionClient
+    alice: AuctionClient
+    bob: AuctionClient
 
 
 @pytest.fixture(scope="session")
 def algorand() -> AlgorandClient:
     """Get an AlgorandClient to use throughout the tests"""
-    algorand = AlgorandClient.default_local_net()
+    algorand = AlgorandClient.default_localnet()
     algorand.set_default_validity_window(1000)
 
     return algorand
 
 
 @pytest.fixture(scope="session")
-def dispenser(algorand: AlgorandClient) -> AddressAndSigner:
+def dispenser(algorand: AlgorandClient) -> SigningAccount:
     """Get the dispenser to fund test addresses"""
-    return algorand.account.dispenser()
+    return algorand.account.localnet_dispenser()
 
 
 @pytest.fixture(scope="session")
-def creator(algorand: AlgorandClient, dispenser: AddressAndSigner) -> AddressAndSigner:
+def test_accounts(
+    algorand: AlgorandClient, dispenser: SigningAccount
+) -> LocalTestAccounts:
     """Get an account to use as the creator of the auction"""
-    acct = algorand.account.random()
 
-    # Make sure the account has some ALGO
-    algorand.send.payment(
-        PayParams(sender=dispenser.address, receiver=acct.address, amount=10_000_000)
+    accounts = LocalTestAccounts(
+        creator=algorand.account.random(),
+        alice=algorand.account.random(),
+        bob=algorand.account.random(),
     )
 
-    return acct
+    # Make sure the accounts have some ALGO
+    for account in accounts:
+        algorand.send.payment(
+            params=PaymentParams(
+                sender=dispenser.address,
+                receiver=account.address,
+                amount=AlgoAmount({"algos": 10}),
+            )
+        )
+
+    return accounts
 
 
 @pytest.fixture(scope="session")
-def alice(algorand: AlgorandClient, dispenser: AddressAndSigner) -> AddressAndSigner:
-    """Get an account to use as Alice who will participate in the auction"""
-    acct = algorand.account.random()
-
-    # Make sure the account has some ALGO
-    algorand.send.payment(
-        PayParams(sender=dispenser.address, receiver=acct.address, amount=10_000_000)
-    )
-
-    return acct
-
-
-@pytest.fixture(scope="session")
-def bob(algorand: AlgorandClient, dispenser: AddressAndSigner) -> AddressAndSigner:
-    """Get an account to use as Bob who will participate in the auction"""
-
-    acct = algorand.account.random()
-
-    # Make sure the account has some ALGO
-    algorand.send.payment(
-        PayParams(sender=dispenser.address, receiver=acct.address, amount=10_000_000)
-    )
-
-    return acct
-
-
-@pytest.fixture(scope="session")
-def auction_asset_id(creator: AddressAndSigner, algorand: AlgorandClient) -> int:
+def auction_asset_id(test_accounts: LocalTestAccounts, algorand: AlgorandClient) -> int:
     """Create an asset to be auctioned"""
     # Create an asset
     sent_txn = algorand.send.asset_create(
         AssetCreateParams(
-            sender=creator.address,
+            sender=test_accounts.creator.address,
             total=1,
             decimals=0,
             asset_name="Mona Lisa",
@@ -85,156 +77,136 @@ def auction_asset_id(creator: AddressAndSigner, algorand: AlgorandClient) -> int
         )
     )
 
+    print(f"Asset created with ID: {sent_txn}")
+
     # Make sure the network tells us the ID of the asset we just created
-    return sent_txn["confirmation"]["asset-index"]
+    return sent_txn.asset_id
 
 
 @pytest.fixture(scope="session")
-def creator_auction_client(
-    algod_client: AlgodClient, creator: AddressAndSigner, algorand: AlgorandClient
-) -> AuctionClient:
-    """Deploy an Auction App and create an Auction app client the creator will use"""
+def auction_app_factory(
+    test_accounts: LocalTestAccounts, algorand: AlgorandClient
+) -> AppFactory:
+    """Define the Auction App Factory"""
 
     config.configure(
         debug=True,
         # trace_all=True,
     )
 
-    auction_client = AuctionClient(
-        algod_client,
-        sender=creator.address,
-        signer=creator.signer,
+    app_factory = algorand.client.get_typed_app_factory(
+        typed_factory=AuctionFactory,
+        app_name="auction",
+        default_sender=test_accounts.creator.address,
+        default_signer=test_accounts.creator.signer,
+        version="1.0",
+        compilation_params=AppClientCompilationParams(
+            updatable=False,
+            deletable=False,
+        ),
     )
 
-    auction_client.create_bare()
+    return app_factory
+
+
+@pytest.fixture(scope="session")
+def auction_clients(
+    test_accounts: LocalTestAccounts,
+    algorand: AlgorandClient,
+    auction_app_factory: AppFactory,
+) -> AuctionClients:
+    """Deploy an Auction App and create an Auction app client the creator will use"""
+
+    creator_app_client, deploy_result = auction_app_factory.deploy(
+        on_update=OnUpdate.ReplaceApp,
+        on_schema_break=OnSchemaBreak.Fail,
+    )
 
     algorand.send.payment(
-        PayParams(
-            sender=creator.address,
-            receiver=auction_client.app_address,
-            amount=1000000,  # 1 Algo
+        params=PaymentParams(
+            sender=test_accounts.creator.address,
+            receiver=creator_app_client.app_address,
+            amount=AlgoAmount({"algos": 1}),  # 1 Algo
         )
     )
 
-    print(f"creator app client details {auction_client.app_id}")
-    return auction_client
-
-
-@pytest.fixture(scope="session")
-def alice_auction_client(
-    algod_client: AlgodClient,
-    creator_auction_client: AuctionClient,
-    alice: AddressAndSigner,
-) -> AuctionClient:
-    """Create an Auction App Client for Alice"""
-
-    config.configure(
-        debug=True,
-        # trace_all=True,
+    alice_app_client = auction_app_factory.get_app_client_by_id(
+        app_id=creator_app_client.app_id,
+        default_sender=test_accounts.alice.address,
+        default_signer=test_accounts.alice.signer,
     )
 
-    auction_client = AuctionClient(
-        algod_client,
-        sender=alice.address,
-        signer=alice.signer,
-        app_id=creator_auction_client.app_id,
-    )
-    print(f"Alice app client details {auction_client.app_id}")
-
-    return auction_client
-
-
-@pytest.fixture(scope="session")
-def bob_auction_client(
-    algod_client: AlgodClient,
-    creator_auction_client: AuctionClient,
-    bob: AddressAndSigner,
-) -> AuctionClient:
-    """Create an Auction App Client for Bob"""
-
-    config.configure(
-        debug=True,
-        # trace_all=True,
+    bob_app_client = auction_app_factory.get_app_client_by_id(
+        app_id=creator_app_client.app_id,
+        default_sender=test_accounts.bob.address,
+        default_signer=test_accounts.bob.signer,
     )
 
-    auction_client = AuctionClient(
-        algod_client,
-        sender=bob.address,
-        signer=bob.signer,
-        app_id=creator_auction_client.app_id,
-    )
-    print(f"Bob app client details {auction_client.app_id}")
-
-    return auction_client
+    print(f"creator app client details {creator_app_client.app_id}")
+    return AuctionClients(creator_app_client, alice_app_client, bob_app_client)
 
 
 def test_opt_into_asset(
-    algod_client: AlgodClient,
-    creator_auction_client: AuctionClient,
-    creator: AddressAndSigner,
+    auction_clients: AuctionClients,
+    test_accounts: LocalTestAccounts,
     auction_asset_id: int,
     algorand: AlgorandClient,
 ) -> None:
     """Test that the auction app opts into the auction asset"""
 
     # Reset timestamp offset to ensure it's current time in localnet
-    algod_client.set_timestamp_offset(0)
+    algorand.client.algod.set_timestamp_offset(0)
+
+    creator_app_client = auction_clients.creator
 
     # dummy transaction to update the timestamp offset
     algorand.send.payment(
-        PayParams(
-            sender=creator.address,
-            receiver=creator.address,
-            amount=0,
+        PaymentParams(
+            sender=test_accounts.creator.address,
+            receiver=test_accounts.creator.address,
+            amount=AlgoAmount({"microAlgos": 0}),
         )
     )
 
-    sp = algod_client.suggested_params()
-    sp.flat_fee = True
-    sp.fee = 2000
-
-    creator_auction_client.opt_into_asset(
-        asset=auction_asset_id,
-        transaction_parameters=TransactionParameters(suggested_params=sp),
+    creator_app_client.send.opt_into_asset(
+        args=(auction_asset_id,),
+        params=CommonAppCallParams(extra_fee=AlgoAmount({"microAlgos": 1000})),
     )
 
-    asset_info = algorand.account.get_asset_information(
-        creator_auction_client.app_address, auction_asset_id
-    )
+    account_info = algorand.account.get_information(creator_app_client.app_address)
+    print(f"account_info.assets: {account_info.assets}")
 
-    assert asset_info["asset-holding"]["asset-id"] == auction_asset_id
-    assert asset_info["asset-holding"]["amount"] == 0
+    assert account_info.assets[0]["asset-id"] == auction_asset_id
+    assert account_info.assets[0]["amount"] == 0
 
 
 def test_start_auction(
-    creator_auction_client: AuctionClient,
-    creator: AddressAndSigner,
+    auction_clients: AuctionClients,
+    test_accounts: LocalTestAccounts,
     auction_asset_id: int,
     algorand: AlgorandClient,
 ) -> None:
     """Test that the auction is started"""
-    asa_transfer_txn = algorand.transactions.asset_transfer(
+    asa_transfer_txn = algorand.create_transaction.asset_transfer(
         AssetTransferParams(
-            sender=creator.address,
-            receiver=creator_auction_client.app_address,
+            sender=test_accounts.creator.address,
+            receiver=auction_clients.creator.app_address,
             asset_id=auction_asset_id,
             amount=1,
         )
     )
 
-    signed_asa_transfer_txn = TransactionWithSigner(asa_transfer_txn, creator.signer)
-
-    start_timestamp = creator_auction_client.start_auction(
-        starting_price=1000000, length=1000, axfer=signed_asa_transfer_txn
+    start_timestamp = auction_clients.creator.send.start_auction(
+        args=(1000000, 1000, asa_transfer_txn)
     )
-    print(f"Auction started at Unix time: {start_timestamp.return_value}\n")
+    print(f"Auction started at Unix time: {start_timestamp.abi_return}\n")
 
-    assert start_timestamp.return_value
+    assert start_timestamp.abi_return
 
 
 def test_alice_bid(
-    alice_auction_client: AuctionClient,
-    alice: AddressAndSigner,
+    auction_clients: AuctionClients,
+    test_accounts: LocalTestAccounts,
     auction_asset_id: int,
     algorand: AlgorandClient,
 ) -> None:
@@ -243,36 +215,38 @@ def test_alice_bid(
     # Alice opts into the auction asset (ASA)
     algorand.send.asset_opt_in(
         AssetOptInParams(
-            sender=alice.address,
+            sender=test_accounts.alice.address,
             asset_id=auction_asset_id,
         )
     )
 
-    alice_auction_client.opt_in_opt_in()
+    auction_clients.alice.send.opt_in.opt_in()
 
-    alice_bid_payment_txn = algorand.transactions.payment(
-        PayParams(
-            sender=alice.address,
-            receiver=alice_auction_client.app_address,
-            amount=1100000,
+    alice_bid_payment_txn = algorand.create_transaction.payment(
+        PaymentParams(
+            sender=test_accounts.alice.address,
+            receiver=auction_clients.alice.app_address,
+            amount=AlgoAmount({"microAlgos": 1100000}),
         )
     )
 
-    alice_bid_payment_tws = TransactionWithSigner(alice_bid_payment_txn, alice.signer)
-
-    highest_bid = alice_auction_client.bid(pay=alice_bid_payment_tws)
+    highest_bid = auction_clients.alice.send.bid(args=(alice_bid_payment_txn,))
     print(
-        f"Alice is the highest bidder with bid: {highest_bid.return_value} microAlgos\n"
+        f"Alice is the highest bidder with bid: {highest_bid.abi_return} microAlgos\n"
     )
 
-    alice_local_state = alice_auction_client.get_local_state(alice.address)
+    alice_local_state = auction_clients.alice.app_client.get_local_state(
+        test_accounts.alice.address
+    )
 
-    assert alice_local_state.claimable_amount == 1100000
+    print(f"alice_local_state: {alice_local_state}")
+
+    assert alice_local_state["claim"].value == 1100000
 
 
 def test_bob_bid(
-    bob_auction_client: AuctionClient,
-    bob: AddressAndSigner,
+    auction_clients: AuctionClients,
+    test_accounts: LocalTestAccounts,
     auction_asset_id: int,
     algorand: AlgorandClient,
 ) -> None:
@@ -281,99 +255,80 @@ def test_bob_bid(
     # Alice opts into the auction asset (ASA)
     algorand.send.asset_opt_in(
         AssetOptInParams(
-            sender=bob.address,
+            sender=test_accounts.bob.address,
             asset_id=auction_asset_id,
         )
     )
 
-    bob_auction_client.opt_in_opt_in()
+    auction_clients.bob.send.opt_in.opt_in()
 
-    bob_bid_payment_txn = algorand.transactions.payment(
-        PayParams(
-            sender=bob.address,
-            receiver=bob_auction_client.app_address,
-            amount=2000000,
+    bob_bid_payment_txn = algorand.create_transaction.payment(
+        PaymentParams(
+            sender=test_accounts.bob.address,
+            receiver=auction_clients.bob.app_address,
+            amount=AlgoAmount({"microAlgos": 2000000}),
         )
     )
 
-    bob_bid_payment_tws = TransactionWithSigner(bob_bid_payment_txn, bob.signer)
+    highest_bid = auction_clients.bob.send.bid(args=(bob_bid_payment_txn,))
+    print(f"Bob is the highest bidder with bid: {highest_bid.abi_return} microAlgos\n")
 
-    highest_bid = bob_auction_client.bid(pay=bob_bid_payment_tws)
-    print(
-        f"Bob is the highest bidder with bid: {highest_bid.return_value} microAlgos\n"
+    bob_local_state = auction_clients.bob.app_client.get_local_state(
+        test_accounts.bob.address
     )
 
-    bob_local_state = bob_auction_client.get_local_state(bob.address)
-
-    assert bob_local_state.claimable_amount == 2000000
+    assert bob_local_state["claim"].value == 2000000
 
 
 def test_alice_claim_bid(
-    algod_client: AlgodClient,
-    alice_auction_client: AuctionClient,
+    auction_clients: AuctionClients,
 ) -> None:
     """Test that Alice claims her bid"""
 
-    sp = algod_client.suggested_params()
-    sp.flat_fee = True
-    sp.fee = 2000
-
-    claimed_amount = alice_auction_client.claim_bids(
-        transaction_parameters=TransactionParameters(suggested_params=sp)
+    claimed_amount = auction_clients.alice.send.claim_bids(
+        params=CommonAppCallParams(extra_fee=AlgoAmount({"microAlgos": 1000}))
     )
-    assert claimed_amount.return_value == 1100000
+    assert claimed_amount.abi_return == 1100000
 
 
 def test_bob_claim_prize(
-    algod_client: AlgodClient,
-    bob_auction_client: AuctionClient,
-    bob: AddressAndSigner,
+    auction_clients: AuctionClients,
+    test_accounts: LocalTestAccounts,
     auction_asset_id: int,
     algorand: AlgorandClient,
 ) -> None:
     """Test that Bob claims the prize"""
 
-    algod_client.set_timestamp_offset(1001)
+    algorand.client.algod.set_timestamp_offset(1001)
 
     algorand.send.payment(
-        PayParams(
-            sender=bob.address,
-            receiver=bob.address,
-            amount=0,
+        PaymentParams(
+            sender=test_accounts.bob.address,
+            receiver=test_accounts.bob.address,
+            amount=AlgoAmount({"microAlgos": 0}),
         )
     )
 
-    sp = algod_client.suggested_params()
-    sp.flat_fee = True
-    sp.fee = 2000  # double fee to cover inner txn fee
-
-    bob_auction_client.claim_asset(
-        asset=auction_asset_id,
-        transaction_parameters=TransactionParameters(suggested_params=sp),
+    auction_clients.bob.send.claim_asset(
+        args=(auction_asset_id,),
+        params=CommonAppCallParams(extra_fee=AlgoAmount({"microAlgos": 1000})),
     )
 
-    bob_asset_info = algorand.account.get_asset_information(
-        bob.address, auction_asset_id
-    )
-    assert bob_asset_info["asset-holding"]["asset-id"] == auction_asset_id
-    assert bob_asset_info["asset-holding"]["amount"] == 1
+    bob_asset_info = algorand.account.get_information(test_accounts.bob.address)
+    assert bob_asset_info.assets[0]["asset-id"] == auction_asset_id
+    assert bob_asset_info.assets[0]["amount"] == 1
 
 
 def test_delete_app(
-    algod_client: AlgodClient,
-    creator_auction_client: AuctionClient,
-    creator: AddressAndSigner,
+    auction_clients: AuctionClients,
+    test_accounts: LocalTestAccounts,
     algorand: AlgorandClient,
 ) -> None:
     """Test that the creator claims the prize fund and deletes the auction app"""
 
-    sp = algod_client.suggested_params()
-    sp.flat_fee = True
-    sp.fee = 2000  # double fee to cover inner txn fee
-
-    creator_auction_client.delete_delete_application(
-        transaction_parameters=TransactionParameters(suggested_params=sp)
+    auction_clients.creator.send.delete.delete_application(
+        params=CommonAppCallParams(extra_fee=AlgoAmount({"microAlgos": 1000}))
     )
-    creator_info = algorand.account.get_information(creator.address)
+    creator_info = algorand.account.get_information(test_accounts.creator.address)
 
-    assert creator_info["total-created-apps"] == 0
+    assert creator_info.total_created_apps == 0
