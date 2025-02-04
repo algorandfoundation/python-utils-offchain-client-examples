@@ -7,6 +7,7 @@ from smart_contracts.artifacts.auction.auction_client import (
     AuctionClient,
     AuctionFactory,
     CommonAppCallParams,
+    StartAuctionArgs,
 )
 
 
@@ -197,7 +198,11 @@ def test_start_auction(
     )
 
     start_timestamp = auction_clients.creator.send.start_auction(
-        args=(1000000, 1000, asa_transfer_txn)
+        args=StartAuctionArgs(
+            starting_price=1000000,
+            length=1000,
+            axfer=asa_transfer_txn,
+        )
     )
     print(f"Auction started at Unix time: {start_timestamp.abi_return}\n")
 

@@ -47,14 +47,22 @@ def _parse_abi_args(args: typing.Any | None = None) -> list[typing.Any] | None:
         for arg in method_args
     ] if method_args else None
 
-ON_COMPLETE_TYPES = typing.Literal[
-    OnComplete.NoOpOC,
-    OnComplete.UpdateApplicationOC,
-    OnComplete.DeleteApplicationOC,
-    OnComplete.OptInOC,
-    OnComplete.CloseOutOC,
-]
+def _init_dataclass(cls: type, data: dict) -> object:
+    """
+    Recursively instantiate a dataclass of type `cls` from `data`.
 
+    For each field on the dataclass, if the field type is also a dataclass
+    and the corresponding data is a dict, instantiate that field recursively.
+    """
+    field_values = {}
+    for field in dataclasses.fields(cls):
+        field_value = data.get(field.name)
+        # Check if the field expects another dataclass and the value is a dict.
+        if dataclasses.is_dataclass(field.type) and isinstance(field_value, dict):
+            field_values[field.name] = _init_dataclass(field.type, field_value)
+        else:
+            field_values[field.name] = field_value
+    return cls(**field_values)
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class NewGameArgs:
@@ -89,48 +97,6 @@ class JoinArgs:
     game_id: int
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class CommonAppCallParams:
-    """Common configuration for app call transaction parameters
-
-    :ivar account_references: List of account addresses to reference
-    :ivar app_references: List of app IDs to reference
-    :ivar asset_references: List of asset IDs to reference
-    :ivar box_references: List of box references to include
-    :ivar extra_fee: Additional fee to add to transaction
-    :ivar lease: Transaction lease value
-    :ivar max_fee: Maximum fee allowed for transaction
-    :ivar note: Arbitrary note for the transaction
-    :ivar rekey_to: Address to rekey account to
-    :ivar sender: Sender address override
-    :ivar signer: Custom transaction signer
-    :ivar static_fee: Fixed fee for transaction
-    :ivar validity_window: Number of rounds valid
-    :ivar first_valid_round: First valid round number
-    :ivar last_valid_round: Last valid round number"""
-
-    account_references: list[str] | None = None
-    app_references: list[int] | None = None
-    asset_references: list[int] | None = None
-    box_references: list[algokit_utils.BoxReference | algokit_utils.BoxIdentifier] | None = None
-    extra_fee: algokit_utils.AlgoAmount | None = None
-    lease: bytes | None = None
-    max_fee: algokit_utils.AlgoAmount | None = None
-    note: bytes | None = None
-    rekey_to: str | None = None
-    sender: str | None = None
-    signer: TransactionSigner | None = None
-    static_fee: algokit_utils.AlgoAmount | None = None
-    validity_window: int | None = None
-    first_valid_round: int | None = None
-    last_valid_round: int | None = None
-
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class CommonAppFactoryCallParams(CommonAppCallParams):
-    """Common configuration for app factory call related transaction parameters"""
-    on_complete: ON_COMPLETE_TYPES | None = None
-
-
 class _TicTacToeOptIn:
     def __init__(self, app_client: algokit_utils.AppClient):
         self.app_client = app_client
@@ -138,10 +104,10 @@ class _TicTacToeOptIn:
     def new_game(
         self,
         args: tuple[algokit_utils.AppMethodCallTransactionArgument] | NewGameArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> algokit_utils.AppCallMethodCallParams:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         return self.app_client.params.opt_in(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "new_game(pay)uint64",
@@ -151,10 +117,10 @@ class _TicTacToeOptIn:
     def join(
         self,
         args: tuple[int] | JoinArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> algokit_utils.AppCallMethodCallParams:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         return self.app_client.params.opt_in(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "join(uint64)void",
@@ -187,10 +153,10 @@ class TicTacToeParams:
     def new_game(
         self,
         args: tuple[algokit_utils.AppMethodCallTransactionArgument] | NewGameArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> algokit_utils.AppCallMethodCallParams:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         return self.app_client.params.call(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "new_game(pay)uint64",
@@ -200,10 +166,10 @@ class TicTacToeParams:
     def delete_game(
         self,
         args: tuple[int] | DeleteGameArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> algokit_utils.AppCallMethodCallParams:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         return self.app_client.params.call(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "delete_game(uint64)void",
@@ -213,10 +179,10 @@ class TicTacToeParams:
     def join(
         self,
         args: tuple[int] | JoinArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> algokit_utils.AppCallMethodCallParams:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         return self.app_client.params.call(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "join(uint64)void",
@@ -226,10 +192,10 @@ class TicTacToeParams:
     def move(
         self,
         args: tuple[int, int, int] | MoveArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> algokit_utils.AppCallMethodCallParams:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         return self.app_client.params.call(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "move(uint64,uint64,uint64)void",
@@ -254,10 +220,10 @@ class _TicTacToeOptInTransaction:
     def new_game(
         self,
         args: tuple[algokit_utils.AppMethodCallTransactionArgument] | NewGameArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> algokit_utils.BuiltTransactions:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         return self.app_client.create_transaction.opt_in(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "new_game(pay)uint64",
@@ -267,10 +233,10 @@ class _TicTacToeOptInTransaction:
     def join(
         self,
         args: tuple[int] | JoinArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> algokit_utils.BuiltTransactions:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         return self.app_client.create_transaction.opt_in(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "join(uint64)void",
@@ -301,10 +267,10 @@ class TicTacToeCreateTransactionParams:
     def new_game(
         self,
         args: tuple[algokit_utils.AppMethodCallTransactionArgument] | NewGameArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> algokit_utils.BuiltTransactions:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         return self.app_client.create_transaction.call(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "new_game(pay)uint64",
@@ -314,10 +280,10 @@ class TicTacToeCreateTransactionParams:
     def delete_game(
         self,
         args: tuple[int] | DeleteGameArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> algokit_utils.BuiltTransactions:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         return self.app_client.create_transaction.call(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "delete_game(uint64)void",
@@ -327,10 +293,10 @@ class TicTacToeCreateTransactionParams:
     def join(
         self,
         args: tuple[int] | JoinArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> algokit_utils.BuiltTransactions:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         return self.app_client.create_transaction.call(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "join(uint64)void",
@@ -340,10 +306,10 @@ class TicTacToeCreateTransactionParams:
     def move(
         self,
         args: tuple[int, int, int] | MoveArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> algokit_utils.BuiltTransactions:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         return self.app_client.create_transaction.call(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "move(uint64,uint64,uint64)void",
@@ -368,11 +334,11 @@ class _TicTacToeOptInSend:
     def new_game(
         self,
         args: tuple[algokit_utils.AppMethodCallTransactionArgument] | NewGameArgs,
-        params: CommonAppCallParams | None = None,
+        params: algokit_utils.CommonAppCallParams | None = None,
         send_params: algokit_utils.SendParams | None = None
     ) -> algokit_utils.SendAppTransactionResult[int]:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         response = self.app_client.send.opt_in(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "new_game(pay)uint64",
@@ -384,11 +350,11 @@ class _TicTacToeOptInSend:
     def join(
         self,
         args: tuple[int] | JoinArgs,
-        params: CommonAppCallParams | None = None,
+        params: algokit_utils.CommonAppCallParams | None = None,
         send_params: algokit_utils.SendParams | None = None
     ) -> algokit_utils.SendAppTransactionResult[None]:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         response = self.app_client.send.opt_in(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "join(uint64)void",
@@ -430,11 +396,11 @@ class TicTacToeSend:
     def new_game(
         self,
         args: tuple[algokit_utils.AppMethodCallTransactionArgument] | NewGameArgs,
-        params: CommonAppCallParams | None = None,
+        params: algokit_utils.CommonAppCallParams | None = None,
         send_params: algokit_utils.SendParams | None = None
     ) -> algokit_utils.SendAppTransactionResult[int]:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         response = self.app_client.send.call(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "new_game(pay)uint64",
@@ -446,11 +412,11 @@ class TicTacToeSend:
     def delete_game(
         self,
         args: tuple[int] | DeleteGameArgs,
-        params: CommonAppCallParams | None = None,
+        params: algokit_utils.CommonAppCallParams | None = None,
         send_params: algokit_utils.SendParams | None = None
     ) -> algokit_utils.SendAppTransactionResult[None]:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         response = self.app_client.send.call(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "delete_game(uint64)void",
@@ -462,11 +428,11 @@ class TicTacToeSend:
     def join(
         self,
         args: tuple[int] | JoinArgs,
-        params: CommonAppCallParams | None = None,
+        params: algokit_utils.CommonAppCallParams | None = None,
         send_params: algokit_utils.SendParams | None = None
     ) -> algokit_utils.SendAppTransactionResult[None]:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         response = self.app_client.send.call(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "join(uint64)void",
@@ -478,11 +444,11 @@ class TicTacToeSend:
     def move(
         self,
         args: tuple[int, int, int] | MoveArgs,
-        params: CommonAppCallParams | None = None,
+        params: algokit_utils.CommonAppCallParams | None = None,
         send_params: algokit_utils.SendParams | None = None
     ) -> algokit_utils.SendAppTransactionResult[None]:
         method_args = _parse_abi_args(args)
-        params = params or CommonAppCallParams()
+        params = params or algokit_utils.CommonAppCallParams()
         response = self.app_client.send.call(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "move(uint64,uint64,uint64)void",
@@ -548,17 +514,18 @@ class _GlobalState:
             key_info = self.app_client.app_spec.state.keys.global_state.get(key)
             struct_class = self._struct_classes.get(key_info.value_type) if key_info else None
             converted[key] = (
-                struct_class(**value) if struct_class and isinstance(value, dict)
+                _init_dataclass(struct_class, value) if struct_class and isinstance(value, dict)
                 else value
             )
         return typing.cast(GlobalStateValue, converted)
 
+    @property
     def id_counter(self) -> int:
-            """Get the current value of the id_counter key in global_state state"""
-            value = self.app_client.state.global_state.get_value("id_counter")
-            if isinstance(value, dict) and "AVMUint64" in self._struct_classes:
-                return self._struct_classes["AVMUint64"](**value)  # type: ignore
-            return typing.cast(int, value)
+        """Get the current value of the id_counter key in global_state state"""
+        value = self.app_client.state.global_state.get_value("id_counter")
+        if isinstance(value, dict) and "AVMUint64" in self._struct_classes:
+            return _init_dataclass(self._struct_classes["AVMUint64"], value)  # type: ignore
+        return typing.cast(int, value)
 
 class _LocalState:
     def __init__(self, app_client: algokit_utils.AppClient, address: str):
@@ -578,24 +545,26 @@ class _LocalState:
             key_info = self.app_client.app_spec.state.keys.local_state.get(key)
             struct_class = self._struct_classes.get(key_info.value_type) if key_info else None
             converted[key] = (
-                struct_class(**value) if struct_class and isinstance(value, dict)
+                _init_dataclass(struct_class, value) if struct_class and isinstance(value, dict)
                 else value
             )
         return typing.cast(LocalStateValue, converted)
 
+    @property
     def games_played(self) -> int:
-            """Get the current value of the games_played key in local_state state"""
-            value = self.app_client.state.local_state(self.address).get_value("games_played")
-            if isinstance(value, dict) and "AVMUint64" in self._struct_classes:
-                return self._struct_classes["AVMUint64"](**value)  # type: ignore
-            return typing.cast(int, value)
+        """Get the current value of the games_played key in local_state state"""
+        value = self.app_client.state.local_state(self.address).get_value("games_played")
+        if isinstance(value, dict) and "AVMUint64" in self._struct_classes:
+            return _init_dataclass(self._struct_classes["AVMUint64"], value)  # type: ignore
+        return typing.cast(int, value)
 
+    @property
     def games_won(self) -> int:
-            """Get the current value of the games_won key in local_state state"""
-            value = self.app_client.state.local_state(self.address).get_value("games_won")
-            if isinstance(value, dict) and "AVMUint64" in self._struct_classes:
-                return self._struct_classes["AVMUint64"](**value)  # type: ignore
-            return typing.cast(int, value)
+        """Get the current value of the games_won key in local_state state"""
+        value = self.app_client.state.local_state(self.address).get_value("games_won")
+        if isinstance(value, dict) and "AVMUint64" in self._struct_classes:
+            return _init_dataclass(self._struct_classes["AVMUint64"], value)  # type: ignore
+        return typing.cast(int, value)
 
 class TicTacToeClient:
     """Client for interacting with TicTacToe smart contract"""
@@ -949,11 +918,11 @@ class TicTacToeFactoryCreateParams:
     def bare(
         self,
         *,
-        params: CommonAppFactoryCallParams | None = None,
+        params: algokit_utils.CommonAppCallCreateParams | None = None,
         compilation_params: algokit_utils.AppClientCompilationParams | None = None
     ) -> algokit_utils.AppCreateParams:
         """Creates an instance using a bare call"""
-        params = params or CommonAppFactoryCallParams()
+        params = params or algokit_utils.CommonAppCallCreateParams()
         return self.app_factory.params.bare.create(
             algokit_utils.AppFactoryCreateParams(**dataclasses.asdict(params)),
             compilation_params=compilation_params)
@@ -962,11 +931,11 @@ class TicTacToeFactoryCreateParams:
         self,
         args: tuple[algokit_utils.AppMethodCallTransactionArgument] | NewGameArgs,
         *,
-        params: CommonAppFactoryCallParams | None = None,
+        params: algokit_utils.CommonAppCallCreateParams | None = None,
         compilation_params: algokit_utils.AppClientCompilationParams | None = None
     ) -> algokit_utils.AppCreateMethodCallParams:
         """Creates a new instance using the new_game(pay)uint64 ABI method"""
-        params = params or CommonAppFactoryCallParams()
+        params = params or algokit_utils.CommonAppCallCreateParams()
         return self.app_factory.params.create(
             algokit_utils.AppFactoryCreateMethodCallParams(
                 **{
@@ -982,11 +951,11 @@ class TicTacToeFactoryCreateParams:
         self,
         args: tuple[int] | DeleteGameArgs,
         *,
-        params: CommonAppFactoryCallParams | None = None,
+        params: algokit_utils.CommonAppCallCreateParams | None = None,
         compilation_params: algokit_utils.AppClientCompilationParams | None = None
     ) -> algokit_utils.AppCreateMethodCallParams:
         """Creates a new instance using the delete_game(uint64)void ABI method"""
-        params = params or CommonAppFactoryCallParams()
+        params = params or algokit_utils.CommonAppCallCreateParams()
         return self.app_factory.params.create(
             algokit_utils.AppFactoryCreateMethodCallParams(
                 **{
@@ -1002,11 +971,11 @@ class TicTacToeFactoryCreateParams:
         self,
         args: tuple[int] | JoinArgs,
         *,
-        params: CommonAppFactoryCallParams | None = None,
+        params: algokit_utils.CommonAppCallCreateParams | None = None,
         compilation_params: algokit_utils.AppClientCompilationParams | None = None
     ) -> algokit_utils.AppCreateMethodCallParams:
         """Creates a new instance using the join(uint64)void ABI method"""
-        params = params or CommonAppFactoryCallParams()
+        params = params or algokit_utils.CommonAppCallCreateParams()
         return self.app_factory.params.create(
             algokit_utils.AppFactoryCreateMethodCallParams(
                 **{
@@ -1022,11 +991,11 @@ class TicTacToeFactoryCreateParams:
         self,
         args: tuple[int, int, int] | MoveArgs,
         *,
-        params: CommonAppFactoryCallParams | None = None,
+        params: algokit_utils.CommonAppCallCreateParams | None = None,
         compilation_params: algokit_utils.AppClientCompilationParams | None = None
     ) -> algokit_utils.AppCreateMethodCallParams:
         """Creates a new instance using the move(uint64,uint64,uint64)void ABI method"""
-        params = params or CommonAppFactoryCallParams()
+        params = params or algokit_utils.CommonAppCallCreateParams()
         return self.app_factory.params.create(
             algokit_utils.AppFactoryCreateMethodCallParams(
                 **{
@@ -1042,11 +1011,11 @@ class TicTacToeFactoryCreateParams:
         self,
         args: tuple[algokit_utils.AppMethodCallTransactionArgument] | NewGameArgs,
         *,
-        params: CommonAppFactoryCallParams | None = None,
+        params: algokit_utils.CommonAppCallCreateParams | None = None,
         compilation_params: algokit_utils.AppClientCompilationParams | None = None
     ) -> algokit_utils.AppCreateMethodCallParams:
         """Creates a new instance using the new_game(pay)uint64 ABI method"""
-        params = params or CommonAppFactoryCallParams()
+        params = params or algokit_utils.CommonAppCallCreateParams()
         return self.app_factory.params.create(
             algokit_utils.AppFactoryCreateMethodCallParams(
                 **{
@@ -1062,11 +1031,11 @@ class TicTacToeFactoryCreateParams:
         self,
         args: tuple[int] | JoinArgs,
         *,
-        params: CommonAppFactoryCallParams | None = None,
+        params: algokit_utils.CommonAppCallCreateParams | None = None,
         compilation_params: algokit_utils.AppClientCompilationParams | None = None
     ) -> algokit_utils.AppCreateMethodCallParams:
         """Creates a new instance using the join(uint64)void ABI method"""
-        params = params or CommonAppFactoryCallParams()
+        params = params or algokit_utils.CommonAppCallCreateParams()
         return self.app_factory.params.create(
             algokit_utils.AppFactoryCreateMethodCallParams(
                 **{
@@ -1087,11 +1056,11 @@ class TicTacToeFactoryUpdateParams:
     def bare(
         self,
         *,
-        params: CommonAppFactoryCallParams | None = None,
+        params: algokit_utils.CommonAppCallCreateParams | None = None,
         
     ) -> algokit_utils.AppUpdateParams:
         """Updates an instance using a bare call"""
-        params = params or CommonAppFactoryCallParams()
+        params = params or algokit_utils.CommonAppCallCreateParams()
         return self.app_factory.params.bare.deploy_update(
             algokit_utils.AppFactoryCreateParams(**dataclasses.asdict(params)),
             )
@@ -1105,11 +1074,11 @@ class TicTacToeFactoryDeleteParams:
     def bare(
         self,
         *,
-        params: CommonAppFactoryCallParams | None = None,
+        params: algokit_utils.CommonAppCallCreateParams | None = None,
         
     ) -> algokit_utils.AppDeleteParams:
         """Deletes an instance using a bare call"""
-        params = params or CommonAppFactoryCallParams()
+        params = params or algokit_utils.CommonAppCallCreateParams()
         return self.app_factory.params.bare.deploy_delete(
             algokit_utils.AppFactoryCreateParams(**dataclasses.asdict(params)),
             )
@@ -1131,10 +1100,10 @@ class TicTacToeFactoryCreateTransactionCreate:
 
     def bare(
         self,
-        params: CommonAppFactoryCallParams | None = None,
+        params: algokit_utils.CommonAppCallCreateParams | None = None,
     ) -> Transaction:
         """Creates a new instance using a bare call"""
-        params = params or CommonAppFactoryCallParams()
+        params = params or algokit_utils.CommonAppCallCreateParams()
         return self.app_factory.create_transaction.bare.create(
             algokit_utils.AppFactoryCreateParams(**dataclasses.asdict(params)),
         )
@@ -1157,12 +1126,12 @@ class TicTacToeFactorySendCreate:
     def bare(
         self,
         *,
-        params: CommonAppFactoryCallParams | None = None,
+        params: algokit_utils.CommonAppCallCreateParams | None = None,
         send_params: algokit_utils.SendParams | None = None,
         compilation_params: algokit_utils.AppClientCompilationParams | None = None,
     ) -> tuple[TicTacToeClient, algokit_utils.SendAppCreateTransactionResult]:
         """Creates a new instance using a bare call"""
-        params = params or CommonAppFactoryCallParams()
+        params = params or algokit_utils.CommonAppCallCreateParams()
         result = self.app_factory.send.bare.create(
             algokit_utils.AppFactoryCreateParams(**dataclasses.asdict(params)),
             send_params=send_params,
@@ -1177,7 +1146,7 @@ class _TicTacToeOpt_inComposer:
     def new_game(
         self,
         args: tuple[algokit_utils.AppMethodCallTransactionArgument] | NewGameArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> "TicTacToeComposer":
         self.composer._composer.add_app_call_method_call(
             self.composer.client.params.opt_in.new_game(
@@ -1195,7 +1164,7 @@ class _TicTacToeOpt_inComposer:
     def join(
         self,
         args: tuple[int] | JoinArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> "TicTacToeComposer":
         self.composer._composer.add_app_call_method_call(
             self.composer.client.params.opt_in.join(
@@ -1227,7 +1196,7 @@ class TicTacToeComposer:
     def new_game(
         self,
         args: tuple[algokit_utils.AppMethodCallTransactionArgument] | NewGameArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> "TicTacToeComposer":
         self._composer.add_app_call_method_call(
             self.client.params.new_game(
@@ -1245,7 +1214,7 @@ class TicTacToeComposer:
     def delete_game(
         self,
         args: tuple[int] | DeleteGameArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> "TicTacToeComposer":
         self._composer.add_app_call_method_call(
             self.client.params.delete_game(
@@ -1263,7 +1232,7 @@ class TicTacToeComposer:
     def join(
         self,
         args: tuple[int] | JoinArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> "TicTacToeComposer":
         self._composer.add_app_call_method_call(
             self.client.params.join(
@@ -1281,7 +1250,7 @@ class TicTacToeComposer:
     def move(
         self,
         args: tuple[int, int, int] | MoveArgs,
-        params: CommonAppCallParams | None = None
+        params: algokit_utils.CommonAppCallParams | None = None
     ) -> "TicTacToeComposer":
         self._composer.add_app_call_method_call(
             self.client.params.move(
@@ -1300,9 +1269,9 @@ class TicTacToeComposer:
         self,
         *,
         args: list[bytes] | None = None,
-        params: CommonAppCallParams | None = None,
+        params: algokit_utils.CommonAppCallParams | None = None,
     ) -> "TicTacToeComposer":
-        params=params or CommonAppCallParams()
+        params=params or algokit_utils.CommonAppCallParams()
         self._composer.add_app_call(
             self.client.params.clear_state(
                 algokit_utils.AppClientBareCallParams(

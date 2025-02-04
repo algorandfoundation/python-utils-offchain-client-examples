@@ -1,50 +1,44 @@
 import logging
 
-from algokit_utils import (
-    AlgorandClient,
-    AppClientCompilationParams,
-    OnSchemaBreak,
-    OnUpdate,
-    SigningAccount,
-    ApplicationSpecification,
-)
+import algokit_utils
 
 logger = logging.getLogger(__name__)
 
 
 # define deployment behaviour based on supplied app spec
-def deploy(
-    app_spec: ApplicationSpecification,
-    deployer: SigningAccount,
-) -> None:
+def deploy() -> None:
     from smart_contracts.artifacts.hello_world.hello_world_client import (
         HelloWorldFactory,
+        HelloArgs,
     )
 
-    algorand = AlgorandClient.default_localnet()
+    algorand = algokit_utils.AlgorandClient.from_environment()
+    deployer_ = algorand.account.from_environment("DEPLOYER")
 
-    app_factory = algorand.client.get_typed_app_factory(
-        typed_factory=HelloWorldFactory,
-        app_name="hello-world",
-        default_sender=deployer.address,
-        default_signer=deployer.signer,
-        version="1.0",
-        compilation_params=AppClientCompilationParams(
-            updatable=True,
-            deletable=False,
-        ),
+    factory = algorand.client.get_typed_app_factory(
+        HelloWorldFactory, default_sender=deployer_.address
     )
 
-    app_client, deploy_result = app_factory.deploy(
-        on_update=OnUpdate.UpdateApp,
-        on_schema_break=OnSchemaBreak.Fail,
+    app_client, result = factory.deploy(
+        on_update=algokit_utils.OnUpdate.AppendApp,
+        on_schema_break=algokit_utils.OnSchemaBreak.AppendApp,
     )
-    print(deploy_result.app.app_id)
+
+    if result.operation_performed in [
+        algokit_utils.OperationPerformed.Create,
+        algokit_utils.OperationPerformed.Replace,
+    ]:
+        algorand.send.payment(
+            algokit_utils.PaymentParams(
+                amount=algokit_utils.AlgoAmount(algo=1),
+                sender=deployer_.address,
+                receiver=app_client.app_address,
+            )
+        )
 
     name = "world"
-
-    response = app_client.send.hello(args=("Hello",))
+    response = app_client.send.hello(args=HelloArgs(name=name))
     logger.info(
-        f"Called hello on {app_spec.contract.name} ({app_client.app_id}) "
+        f"Called hello on {app_client.app_name} ({app_client.app_id}) "
         f"with name={name}, received: {response.abi_return}"
     )
