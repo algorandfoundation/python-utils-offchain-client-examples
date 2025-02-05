@@ -16,12 +16,14 @@ def hello_world_client() -> HelloWorldClient:
     )
 
     algorand = AlgorandClient.default_localnet()
+    wallets = algorand.client.kmd.list_wallets()
+    print(f"wallets: {wallets}")
 
     deployer = algorand.account.random()
     algorand.account.ensure_funded(
         account_to_fund=deployer,
         dispenser_account=algorand.account.localnet_dispenser(),
-        min_spending_balance=AlgoAmount(amount={"algos": 2}),
+        min_spending_balance=AlgoAmount(algos=2),
     )
 
     app_factory = algorand.client.get_typed_app_factory(

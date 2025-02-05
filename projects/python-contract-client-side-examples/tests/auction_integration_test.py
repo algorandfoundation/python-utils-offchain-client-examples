@@ -6,7 +6,6 @@ from algokit_utils.config import config
 from smart_contracts.artifacts.auction.auction_client import (
     AuctionClient,
     AuctionFactory,
-    CommonAppCallParams,
     StartAuctionArgs,
 )
 
@@ -56,7 +55,7 @@ def test_accounts(
             params=PaymentParams(
                 sender=dispenser.address,
                 receiver=account.address,
-                amount=AlgoAmount({"algos": 10}),
+                amount=AlgoAmount(algo=10),
             )
         )
 
@@ -127,7 +126,7 @@ def auction_clients(
         params=PaymentParams(
             sender=test_accounts.creator.address,
             receiver=creator_app_client.app_address,
-            amount=AlgoAmount({"algos": 1}),  # 1 Algo
+            amount=AlgoAmount(algo=1),  # 1 Algo
         )
     )
 
@@ -165,13 +164,13 @@ def test_opt_into_asset(
         PaymentParams(
             sender=test_accounts.creator.address,
             receiver=test_accounts.creator.address,
-            amount=AlgoAmount({"microAlgos": 0}),
+            amount=AlgoAmount(micro_algo=0),
         )
     )
 
     creator_app_client.send.opt_into_asset(
         args=(auction_asset_id,),
-        params=CommonAppCallParams(extra_fee=AlgoAmount({"microAlgos": 1000})),
+        params=CommonAppCallParams(extra_fee=AlgoAmount(micro_algo=1000)),
     )
 
     account_info = algorand.account.get_information(creator_app_client.app_address)
@@ -231,7 +230,7 @@ def test_alice_bid(
         PaymentParams(
             sender=test_accounts.alice.address,
             receiver=auction_clients.alice.app_address,
-            amount=AlgoAmount({"microAlgos": 1100000}),
+            amount=AlgoAmount(micro_algo=1100000),
         )
     )
 
@@ -271,7 +270,7 @@ def test_bob_bid(
         PaymentParams(
             sender=test_accounts.bob.address,
             receiver=auction_clients.bob.app_address,
-            amount=AlgoAmount({"microAlgos": 2000000}),
+            amount=AlgoAmount(micro_algo=2000000),
         )
     )
 
@@ -291,7 +290,7 @@ def test_alice_claim_bid(
     """Test that Alice claims her bid"""
 
     claimed_amount = auction_clients.alice.send.claim_bids(
-        params=CommonAppCallParams(extra_fee=AlgoAmount({"microAlgos": 1000}))
+        params=CommonAppCallParams(extra_fee=AlgoAmount(micro_algo=1000))
     )
     assert claimed_amount.abi_return == 1100000
 
@@ -310,13 +309,13 @@ def test_bob_claim_prize(
         PaymentParams(
             sender=test_accounts.bob.address,
             receiver=test_accounts.bob.address,
-            amount=AlgoAmount({"microAlgos": 0}),
+            amount=AlgoAmount(micro_algo=0),
         )
     )
 
     auction_clients.bob.send.claim_asset(
         args=(auction_asset_id,),
-        params=CommonAppCallParams(extra_fee=AlgoAmount({"microAlgos": 1000})),
+        params=CommonAppCallParams(extra_fee=AlgoAmount(micro_algo=1000)),
     )
 
     bob_asset_info = algorand.account.get_information(test_accounts.bob.address)
@@ -332,7 +331,7 @@ def test_delete_app(
     """Test that the creator claims the prize fund and deletes the auction app"""
 
     auction_clients.creator.send.delete.delete_application(
-        params=CommonAppCallParams(extra_fee=AlgoAmount({"microAlgos": 1000}))
+        params=CommonAppCallParams(extra_fee=AlgoAmount(micro_algo=1000))
     )
     creator_info = algorand.account.get_information(test_accounts.creator.address)
 
